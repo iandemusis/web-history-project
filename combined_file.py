@@ -8,7 +8,6 @@ Created on Thu May 18 14:47:20 2023
 from pathlib import Path
 import mailbox
 import email
-#no need for import email that i can think of
 import pandas as pd
 from bs4 import BeautifulSoup
 import requests 
@@ -22,15 +21,18 @@ def process_message(message):
     date = message['Date']
     recipient = message['To']
     
+    name, email_address = email.utils.parseaddr(sender)
+    
     return {
         'Subject': subject,
-        'Author': sender,
+        'Author Name': name,
+        'Author Email': email_address,
         'Date': date,
         'Recipient': recipient
         }
 
 def analyse_data(df):
-    author_counts = df['Author'].value_counts()
+    author_counts = df['Author Name'].value_counts()
     top_10_names = author_counts.head(10)
     
     print("\nTop 10 Most Popular Names:\n")
@@ -117,13 +119,6 @@ def process_emails():
     directory = Path("/Users/iandemusis/Desktop/html_zinoviev")
     files = directory.glob("www-talk.199[1-5]q[1-4]")
     message_details_csv_file = "message_details.csv"
-    
-    # code below is from when I was using writer.writerow, 
-    # dont want to delete in case i need it again
-    #
-    # with open(message_details_csv_file, 'w', newline='') as file:
-    #    writer = csv.writer(file)
-    #    writer.writerow(['Subject', 'Author', 'Date', 'Recipient'])
         
     for f_path in files:
         mbox = mailbox.mbox(str(f_path))
@@ -131,7 +126,7 @@ def process_emails():
             data_row = process_message(message)
             list_for_dataframe.append(data_row)
                   
-    df = pd.DataFrame(list_for_dataframe,columns = ['Subject', 'Author', 'Date', 'Recipient'])
+    df = pd.DataFrame(list_for_dataframe,columns = ['Subject', 'Author Name', 'Author Email', 'Date', 'Recipient'])
 
     analyse_data(df)
     
@@ -190,6 +185,10 @@ if __name__ == "__main__":
     
     
     
+    #USE THE MAILBOX AND EMAIL MODULES
+    #SAVE INFO IN ONE BIG CSV FILE 
+    #FIND MODULE THAT SEPARATES NAMES FROM EMAILS (MIGHT BE EMAIL MODULE ITSELF)
+    #use standards and create a dataframe
     #USE THE MAILBOX AND EMAIL MODULES
     #SAVE INFO IN ONE BIG CSV FILE 
     #FIND MODULE THAT SEPARATES NAMES FROM EMAILS (MIGHT BE EMAIL MODULE ITSELF)
