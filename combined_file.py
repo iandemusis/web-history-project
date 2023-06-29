@@ -1,11 +1,5 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-"""
-Created on Thu May 18 14:47:20 2023
-
-@author: iandemusis
-"""
 from pathlib import Path
+import os
 import mailbox
 import email
 import pandas as pd
@@ -14,6 +8,7 @@ import requests
 import re
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.cluster import KMeans
+import email_reply_parser
 
 def process_message(message):
     subject = message['Subject']
@@ -23,21 +18,31 @@ def process_message(message):
     
     name, email_address = email.utils.parseaddr(sender)
     
+    #extract the first line of the email body
+    content = message.get_payload()  #get the email content
+    if isinstance(content, list):
+        content = content[0].as_string()  #convert list to string
+    first_line = content.split('\n', 1)[0] if content else ''          
+    
     return {
         'Subject': subject,
         'Author Name': name,
         'Author Email': email_address,
         'Date': date,
-        'Recipient': recipient
-        }
+        'Recipient': recipient,
+        'First Line': first_line
+    }
+
 
 def analyse_data(df):
     author_counts = df['Author Name'].value_counts()
     top_10_names = author_counts.head(10)
     
-    print("\nTop 10 Most Popular Names:\n")
-    for name, count in top_10_names.items():
-        print(f"{name:<50} {count}")
+    if not top_10_names.empty:  #check if there are names to print
+        print("\nTop 10 Most Popular Names:\n")
+        for name, count in top_10_names.items():
+            print(f"{name:<50} {count}")
+            
     
 def scrape_data():
     data = []
@@ -59,6 +64,12 @@ def scrape_data():
     print(data)
     
 def email_clustering(df, subjects_per_cluster=5, top_clusters = 10):
+    
+    #the clusters represent groups of email subjects that share similar characteristics.
+    #It groups together subjects that have similar word usage, language patterns, or thematic similarities. 
+    #The algorithm does this by calculating the TF-IDF (Term Frequency-Inverse Document Frequency) #
+    #representation of the subjects and using the K-means algorithm to partition them into distinct clusters.
+    
     #to drop rows with no subject:
     df = df.dropna(subset=['Subject']) 
     
@@ -81,11 +92,6 @@ def email_clustering(df, subjects_per_cluster=5, top_clusters = 10):
         print(f"\nCluster {cluster_id}:")
         for subject in cluster_subjects:
             print(f"- {subject}")
-            
-    #the clusters represent groups of email subjects that share similar characteristics.
-    #It groups together subjects that have similar word usage, language patterns, or thematic similarities. 
-    #The algorithm does this by calculating the TF-IDF (Term Frequency-Inverse Document Frequency) #
-    #representation of the subjects and using the K-means algorithm to partition them into distinct clusters.
     
 def count_replies(df):
     reply_counts = {}
@@ -111,85 +117,53 @@ def count_replies(df):
     print("\nTop 10 Subjects with the Most Replies:\n")
     for i, (subject, count) in enumerate(sorted_counts[:10], start=1):
         print(f"{i}. {subject:<50} {count} replies\n")
-
+    
+def merge_text_files(directory_path, output_file):
+    directory = Path(directory_path)
+    
+    with open(output_file, "w") as outfile:
+        for file_path in directory.glob("*.txt"):
+            with open(file_path, "r", encoding='latin-1') as infile:
+                outfile.write(infile.read())
+    print("Files merged successfully.") 
+    
+    return output_file
     
 def process_emails():
     list_for_dataframe = []
     
     directory = Path("/Users/iandemusis/Desktop/html_zinoviev")
-    files = directory.glob("www-talk.199[1-5]q[1-4]")
-    message_details_csv_file = "message_details.csv"
-        
+    files = directory.glob("www-talk.199[1-6]q[1-4].txt")
+    
+    input_directory = str(directory) #make the directory into a str object
+    message_details_csv_file = os.path.join(input_directory, "message_details.csv")
+    
     for f_path in files:
         mbox = mailbox.mbox(str(f_path))
         for message in mbox:
             data_row = process_message(message)
             list_for_dataframe.append(data_row)
                   
-    df = pd.DataFrame(list_for_dataframe,columns = ['Subject', 'Author Name', 'Author Email', 'Date', 'Recipient'])
-
-    analyse_data(df)
+    df = pd.DataFrame(list_for_dataframe, columns=[
+        'Subject', 'Author Name', 'Author Email', 'Date', 'Recipient', 'First Line'])
+    
+    df['Date'] = df['Date'].str.replace(r'est$', 'EST', regex=True).replace("MET", "", regex = True)
     
     df.to_csv(message_details_csv_file, index=False)
     
     return df
-    
+
 def main():
+    merge_text_files("/Users/iandemusis/Desktop/html_zinoviev", "/Users/iandemusis/Desktop/html_zinoviev/merged_output.txt")
     df = process_emails()
-    email_clustering(df)
-    scrape_data()
-    count_replies(df)
+    #email_clustering(df)
+    #scrape_data()
+    #count_replies(df)
+    
     
 if __name__ == "__main__":
     main()
     
-    
-    #added a main function to get ability to compartimentalize the code.
-    
-    #pathlib over glob for a more convenient way to handle file paths. (how is it better?)
-    #explanation for pathlib over glob:
-        #Regarding why pathlib is recommended over glob, here are a few advantages:
-        #Object-oriented approach: pathlib provides a clean and intuitive object-oriented 
-        #interface to work with paths, making it easier to perform common file system operations.
-        #Platform-independent code: pathlib handles paths in a platform-independent manner. 
-        #It automatically handles path separators (/ or \) based on the operating system, 
-        #allowing your code to be portable.
-        #Enhanced functionality: pathlib offers more functionality for working with paths, 
-        #such as joining paths, resolving relative paths, extracting file components, and much more.
-        #By using pathlib, your code becomes more readable, maintainable, and flexible. 
-        #It provides a consistent and powerful way to handle file system paths in Python.
-
-    
-    
-    #who sends the most emails? 
-    #(is most_popular_name the most popular email sender in general, 
-    #or does it only count originals, originals and replies, repeats, etc...)
-    #stuff to do with date!
-    #average number of emails a day? most popular day to communicate?
-    
-    #Email Network Analysis: Build a network graph using the email addresses as nodes 
-    #and analyze the network structure to identify influential senders, 
-    #common communication patterns, and potential clusters of people.
-
-    #Email Topic Modeling: Apply topic modeling techniques (e.g., Latent Dirichlet Allocation) 
-    #to identify common topics or themes within your email dataset. This can help in understanding 
-    #the main discussion areas or recurring subjects in your emails.
-    
-    # when emails are responses to a thread, the recipient on the csv file reads 
-    # as " multiple recipients". 
-    # We need to figure out a way to order and separate these emailers, both the senders
-    # and recipients in order. 
-    
-    #need to fix the combined file, so all the files are included!!!
-    #convert the dates all to the same format, so there are no headaches in the future
-    
-    
-    
-    #USE THE MAILBOX AND EMAIL MODULES
-    #SAVE INFO IN ONE BIG CSV FILE 
-    #FIND MODULE THAT SEPARATES NAMES FROM EMAILS (MIGHT BE EMAIL MODULE ITSELF)
-    #use standards and create a dataframe
-    #USE THE MAILBOX AND EMAIL MODULES
     #SAVE INFO IN ONE BIG CSV FILE 
     #FIND MODULE THAT SEPARATES NAMES FROM EMAILS (MIGHT BE EMAIL MODULE ITSELF)
     #use standards and create a dataframe
